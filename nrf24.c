@@ -11,6 +11,7 @@
 *   http://www.tinkerer.eu/AVRLib/nRF24L01
 * -----------------------------------------------------------------------------
 */
+#include <avr/io.h>
 #include "nrf24.h"
 
 uint8_t payload_len;
@@ -20,7 +21,7 @@ void nrf24_init()
 {
     nrf24_setupPins();
     nrf24_ce_digitalWrite(LOW);
-    nrf24_csn_digitalWrite(HIGH);    
+    nrf24_csn_digitalWrite(HIGH);
 }
 
 /* configure the module */

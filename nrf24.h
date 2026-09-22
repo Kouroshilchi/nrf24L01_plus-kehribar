@@ -26,6 +26,14 @@
 #define NRF24_TRANSMISSON_OK 0
 #define NRF24_MESSAGE_LOST   1
 
+#define NRF24_CE_PORT PORTB
+#define NRF24_CE_DDR  DDRB
+#define NRF24_CE_PIN  PB3
+
+#define NRF24_CSN_PORT PORTB
+#define NRF24_CSN_DDR  DDRB
+#define NRF24_CSN_PIN  PB4
+
 /* adjustment functions */
 void    nrf24_init();
 void    nrf24_rx_address(uint8_t* adr);
@@ -108,8 +116,8 @@ extern void nrf24_sck_digitalWrite(uint8_t state);
 extern void nrf24_mosi_digitalWrite(uint8_t state);
 
 /* -------------------------------------------------------------------------- */
-// nrf24 MISO pin read function
-// - returns: Non-zero if the pin is high
+/* nrf24 MISO pin read function
+ - returns: Non-zero if the pin is high */
 /* -------------------------------------------------------------------------- */
 extern uint8_t nrf24_miso_digitalRead();
 
