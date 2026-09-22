@@ -16,6 +16,56 @@
 
 uint8_t payload_len;
 
+void nrf24_setupPins(void)
+{
+    DDRB |= (1<<3);
+    DDRB |= (1<<4);
+    DDRB |= (1<<5); 
+    DDRB |= (1<<7); 
+
+    DDRB &= ~(1<<6);
+
+    PORTB |= (1<<4);
+}
+
+void nrf24_ce_digitalWrite(uint8_t state)
+{
+    if(state)
+        PORTB |= (1<<3);
+    else
+        PORTB &= ~(1<<3);
+}
+
+void nrf24_csn_digitalWrite(uint8_t state)
+{
+    if(state)
+        PORTB |= (1<<4);
+    else
+        PORTB &= ~(1<<4);
+}
+
+void nrf24_sck_digitalWrite(uint8_t state)
+{
+    if(state)
+        PORTB |= (1<<7);
+    else
+        PORTB &= ~(1<<7);
+}
+
+void nrf24_mosi_digitalWrite(uint8_t state)
+{
+    if(state)
+        PORTB |= (1<<5);
+    else
+        PORTB &= ~(1<<5);
+}
+
+uint8_t nrf24_miso_digitalRead(void)
+{
+    return (PINB & (1<<6));
+}
+
+
 /* init the hardware pins */
 void nrf24_init() 
 {
