@@ -101,9 +101,9 @@ void nrf24_config(uint8_t channel, uint8_t pay_length)
     // Set RF channel
     nrf24_configRegister(RF_CH,channel);
 
-    // Set length of incoming payload on both enabled pipes (P0 and P1)
+    // Set length of incoming payload on Pipe 0 (and Pipe 1)
     nrf24_configRegister(RX_PW_P0, payload_len);
-    nrf24_configRegister(RX_PW_P1, payload_len); // Data payload pipe
+    nrf24_configRegister(RX_PW_P1, 0x00); // Pipe not used
     nrf24_configRegister(RX_PW_P2, 0x00); // Pipe not used 
     nrf24_configRegister(RX_PW_P3, 0x00); // Pipe not used 
     nrf24_configRegister(RX_PW_P4, 0x00); // Pipe not used 
@@ -112,11 +112,11 @@ void nrf24_config(uint8_t channel, uint8_t pay_length)
     // 1 Mbps, TX gain: 0dbm
     nrf24_configRegister(RF_SETUP, (0<<RF_DR)|((0x03)<<RF_PWR));
 
-    // Auto Acknowledgment
-    nrf24_configRegister(EN_AA,(1<<ENAA_P0)|(1<<ENAA_P1)|(0<<ENAA_P2)|(0<<ENAA_P3)|(0<<ENAA_P4)|(0<<ENAA_P5));
+    // Auto Acknowledgment on Pipe 0
+    nrf24_configRegister(EN_AA,(1<<ENAA_P0)|(0<<ENAA_P1)|(0<<ENAA_P2)|(0<<ENAA_P3)|(0<<ENAA_P4)|(0<<ENAA_P5));
 
-    // Enable RX addresses
-    nrf24_configRegister(EN_RXADDR,(1<<ERX_P0)|(1<<ERX_P1)|(0<<ERX_P2)|(0<<ERX_P3)|(0<<ERX_P4)|(0<<ERX_P5));
+    // Enable RX address on Pipe 0
+    nrf24_configRegister(EN_RXADDR,(1<<ERX_P0)|(0<<ERX_P1)|(0<<ERX_P2)|(0<<ERX_P3)|(0<<ERX_P4)|(0<<ERX_P5));
 
     // Auto retransmit delay: 1250 us and Up to 15 retransmit trials
     nrf24_configRegister(SETUP_RETR,(0x04<<ARD)|(0x0F<<ARC));
@@ -144,7 +144,7 @@ void nrf24_config(uint8_t channel, uint8_t pay_length)
 void nrf24_rx_address(uint8_t * adr) 
 {
     nrf24_ce_digitalWrite(LOW);
-    nrf24_writeRegister(RX_ADDR_P1,adr,nrf24_ADDR_LEN);
+    nrf24_writeRegister(RX_ADDR_P0,adr,nrf24_ADDR_LEN);
 }
 
 /* Returns the payload length */
