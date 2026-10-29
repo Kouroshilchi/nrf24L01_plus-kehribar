@@ -12,20 +12,29 @@
 * -----------------------------------------------------------------------------
 */
 #include <avr/io.h>
+#include <util/delay.h>
 #include "nrf24.h"
 
 uint8_t payload_len;
 
 void nrf24_setupPins(void)
 {
+    /* Ensure hardware SPI is disabled so software bit-banging owns PB4..PB7 */
+    SPCR &= ~(1 << SPE);
+
     DDRB |= (1<<3);
     DDRB |= (1<<4);
     DDRB |= (1<<5); 
     DDRB |= (1<<7); 
 
     DDRB &= ~(1<<6);
+    DDRB &= ~(1<<2);
+    PORTB |= (1<<2); /* IRQ pull-up */
 
-    PORTB |= (1<<4);
+    PORTB &= ~(1<<3); /* CE low */
+    PORTB |= (1<<4);  /* CSN high */
+    PORTB &= ~(1<<5); /* MOSI low */
+    PORTB &= ~(1<<7); /* SCK low */
 }
 
 void nrf24_ce_digitalWrite(uint8_t state)
@@ -77,14 +86,23 @@ void nrf24_init()
 /* configure the module */
 void nrf24_config(uint8_t channel, uint8_t pay_length)
 {
+    /* Always configure registers in Standby-I / Power Down (CE = LOW) */
+    nrf24_ce_digitalWrite(LOW);
+
     /* Use static payload length ... */
     payload_len = pay_length;
+
+    // Power down during register configuration, 1-byte CRC enabled
+    nrf24_configRegister(CONFIG, nrf24_CONFIG);
+
+    // 5-byte address width
+    nrf24_configRegister(SETUP_AW, 0x03);
 
     // Set RF channel
     nrf24_configRegister(RF_CH,channel);
 
-    // Set length of incoming payload 
-    nrf24_configRegister(RX_PW_P0, 0x00); // Auto-ACK pipe ...
+    // Set length of incoming payload on both enabled pipes (P0 and P1)
+    nrf24_configRegister(RX_PW_P0, payload_len);
     nrf24_configRegister(RX_PW_P1, payload_len); // Data payload pipe
     nrf24_configRegister(RX_PW_P2, 0x00); // Pipe not used 
     nrf24_configRegister(RX_PW_P3, 0x00); // Pipe not used 
@@ -94,20 +112,29 @@ void nrf24_config(uint8_t channel, uint8_t pay_length)
     // 1 Mbps, TX gain: 0dbm
     nrf24_configRegister(RF_SETUP, (0<<RF_DR)|((0x03)<<RF_PWR));
 
-    // CRC enable, 1 byte CRC length
-    nrf24_configRegister(CONFIG,nrf24_CONFIG);
-
     // Auto Acknowledgment
     nrf24_configRegister(EN_AA,(1<<ENAA_P0)|(1<<ENAA_P1)|(0<<ENAA_P2)|(0<<ENAA_P3)|(0<<ENAA_P4)|(0<<ENAA_P5));
 
     // Enable RX addresses
     nrf24_configRegister(EN_RXADDR,(1<<ERX_P0)|(1<<ERX_P1)|(0<<ERX_P2)|(0<<ERX_P3)|(0<<ERX_P4)|(0<<ERX_P5));
 
-    // Auto retransmit delay: 1000 us and Up to 15 retransmit trials
+    // Auto retransmit delay: 1250 us and Up to 15 retransmit trials
     nrf24_configRegister(SETUP_RETR,(0x04<<ARD)|(0x0F<<ARC));
 
-    // Dynamic length configurations: No dynamic length
+    // Dynamic length configurations: No dynamic length, no special features
     nrf24_configRegister(DYNPD,(0<<DPL_P0)|(0<<DPL_P1)|(0<<DPL_P2)|(0<<DPL_P3)|(0<<DPL_P4)|(0<<DPL_P5));
+    nrf24_configRegister(FEATURE, 0x00);
+
+    // Flush both FIFOs and clear status flags
+    nrf24_csn_digitalWrite(LOW);
+    spi_transfer(FLUSH_RX);
+    nrf24_csn_digitalWrite(HIGH);
+
+    nrf24_csn_digitalWrite(LOW);
+    spi_transfer(FLUSH_TX);
+    nrf24_csn_digitalWrite(HIGH);
+
+    nrf24_configRegister(STATUS,(1<<RX_DR)|(1<<TX_DS)|(1<<MAX_RT));
 
     // Start listening
     nrf24_powerUpRx();
@@ -118,7 +145,6 @@ void nrf24_rx_address(uint8_t * adr)
 {
     nrf24_ce_digitalWrite(LOW);
     nrf24_writeRegister(RX_ADDR_P1,adr,nrf24_ADDR_LEN);
-    nrf24_ce_digitalWrite(HIGH);
 }
 
 /* Returns the payload length */
@@ -130,6 +156,7 @@ uint8_t nrf24_payload_length()
 /* Set the TX address */
 void nrf24_tx_address(uint8_t* adr)
 {
+    nrf24_ce_digitalWrite(LOW);
     /* RX_ADDR_P0 must be set to the sending addr for auto ack to work. */
     nrf24_writeRegister(RX_ADDR_P0,adr,nrf24_ADDR_LEN);
     nrf24_writeRegister(TX_ADDR,adr,nrf24_ADDR_LEN);
@@ -291,22 +318,35 @@ uint8_t nrf24_lastMessageStatus()
 
 void nrf24_powerUpRx()
 {     
+    uint8_t prevConfig = 0;
+    nrf24_ce_digitalWrite(LOW);
+    nrf24_readRegister(CONFIG, &prevConfig, 1);
+
     nrf24_csn_digitalWrite(LOW);
     spi_transfer(FLUSH_RX);
     nrf24_csn_digitalWrite(HIGH);
 
     nrf24_configRegister(STATUS,(1<<RX_DR)|(1<<TX_DS)|(1<<MAX_RT)); 
-
-    nrf24_ce_digitalWrite(LOW);    
     nrf24_configRegister(CONFIG,nrf24_CONFIG|((1<<PWR_UP)|(1<<PRIM_RX)));    
+    if ((prevConfig & (1 << PWR_UP)) == 0)
+    {
+        _delay_ms(5); /* Tpd2stby oscillator startup delay */
+    }
     nrf24_ce_digitalWrite(HIGH);
 }
 
 void nrf24_powerUpTx()
 {
-    nrf24_configRegister(STATUS,(1<<RX_DR)|(1<<TX_DS)|(1<<MAX_RT)); 
+    uint8_t prevConfig = 0;
+    nrf24_ce_digitalWrite(LOW);
+    nrf24_readRegister(CONFIG, &prevConfig, 1);
 
+    nrf24_configRegister(STATUS,(1<<RX_DR)|(1<<TX_DS)|(1<<MAX_RT)); 
     nrf24_configRegister(CONFIG,nrf24_CONFIG|((1<<PWR_UP)|(0<<PRIM_RX)));
+    if ((prevConfig & (1 << PWR_UP)) == 0)
+    {
+        _delay_ms(5); /* Tpd2stby oscillator startup delay */
+    }
 }
 
 void nrf24_powerDown()
@@ -325,8 +365,7 @@ uint8_t spi_transfer(uint8_t tx)
 
     for(i=0;i<8;i++)
     {
-
-        if(tx & (1<<(7-i)))
+        if(tx & 0x80)
         {
             nrf24_mosi_digitalWrite(HIGH);            
         }
@@ -334,8 +373,11 @@ uint8_t spi_transfer(uint8_t tx)
         {
             nrf24_mosi_digitalWrite(LOW);
         }
+        tx <<= 1;
 
+        _delay_us(1);
         nrf24_sck_digitalWrite(HIGH);        
+        _delay_us(1);
 
         rx = rx << 1;
         if(nrf24_miso_digitalRead())
@@ -344,7 +386,7 @@ uint8_t spi_transfer(uint8_t tx)
         }
 
         nrf24_sck_digitalWrite(LOW);                
-
+        _delay_us(1);
     }
 
     return rx;
